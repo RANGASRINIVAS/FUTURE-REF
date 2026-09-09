@@ -1,0 +1,169 @@
+# =============================================================================
+# values.yaml — Mimir DEV
+# =============================================================================
+# Chart:       grafana/mimir-distributed v6.1.0
+# Prepared by: Vijay
+# Environment: DEV
+# Namespace:   vgl-observability
+# Date:        2026-09-09
+#
+# Notes:
+# - grafana/mimir-simple is deprecated — using mimir-distributed in monolithic mode
+# - ruler and alertmanager disabled — not needed for Phase 1
+# - Federated Identity Credential created for Workload Identity:
+#   mimir-workload-identity on AKS-VGL-AI-Governance-DEV-agentpool
+# =============================================================================
+
+mimir:
+  structuredConfig:
+
+    # -------------------------------------------------------------------------
+    # Common Storage — Azure Blob Storage
+    # Storage Account: stovglobservabilitydev (created in P1-2)
+    # Authentication: AKS Workload Identity (Kubelet Identity)
+    # Federated Credential: mimir-workload-identity
+    # -------------------------------------------------------------------------
+    common:
+      storage:
+        backend: azure
+        azure:
+          account_name: stovglobservabilitydev    # Storage Account created in P1-2
+          endpoint_suffix: "blob.core.windows.net" # Azure Blob Storage endpoint
+
+    # -------------------------------------------------------------------------
+    # Blocks Storage — Metrics data container
+    # Container: mimir-blocks-dev (created in P1-2)
+    # Must explicitly set backend: azure here too
+    # -------------------------------------------------------------------------
+    blocks_storage:
+      backend: azure
+      azure:
+        container_name: mimir-blocks-dev          # Blob container created in P1-2
+
+    # -------------------------------------------------------------------------
+    # Ingester Ring — DEV single replica
+    # Default replication_factor is 3 (PROD HA)
+    # Must set to 1 for DEV — otherwise Mimir fails to start
+    # push_grpc_method_enabled: true required when ingest_storage is disabled
+    # -------------------------------------------------------------------------
+    ingester:
+      ring:
+        replication_factor: 1                    # DEV only — set to 3 for PROD
+      push_grpc_method_enabled: true             # Required when ingest_storage disabled
+
+    # -------------------------------------------------------------------------
+    # Ingest Storage — Disabled
+    # We use direct ingestion NOT Kafka-based ingest storage
+    # -------------------------------------------------------------------------
+    ingest_storage:
+      enabled: false                             # Using direct ingestion — no Kafka
+
+    # -------------------------------------------------------------------------
+    # Usage Stats — Disabled
+    # Disabled to prevent S3 endpoint errors
+    # -------------------------------------------------------------------------
+    usage_stats:
+      enabled: false                             # Disabled — prevents S3 endpoint error
+      installation_mode: helm                    # Required when usage_stats disabled
+
+    # -------------------------------------------------------------------------
+    # Limits — Safety limits to prevent overload
+    # -------------------------------------------------------------------------
+    limits:
+      ingestion_rate: 10000                      # Max 10,000 metric samples per second
+      max_global_series_per_user: 1500000        # Max 1.5 million unique metrics
+      compactor_blocks_retention_period: 9360h   # 13 months retention (13 x 30 x 24)
+
+    # -------------------------------------------------------------------------
+    # Compactor — Cleans and organises metric blocks
+    # -------------------------------------------------------------------------
+    compactor:
+      data_dir: /data/compactor                  # Temporary workspace for compactor
+
+# =============================================================================
+# Service Account — AKS Workload Identity
+# Kubelet Identity Client ID confirmed via:
+# az aks show --query "identityProfile.kubeletidentity.clientId"
+# Role assigned in P1-2: Storage Blob Data Contributor
+# Federated Credential created: mimir-workload-identity
+# =============================================================================
+serviceAccount:
+  create: true                                   # Create service account for Mimir pod
+  annotations:
+    azure.workload.identity/client-id: f1514a75-c187-4be1-b5fa-8c3460b19616
+  labels:
+    azure.workload.identity/use: "true"          # Required for Workload Identity
+
+# =============================================================================
+# Global Pod Labels — Required for Azure Workload Identity
+# All Mimir pods need this label to use Workload Identity
+# =============================================================================
+global:
+  podLabels:
+    azure.workload.identity/use: "true"          # Required for all pods
+
+# =============================================================================
+# Ingester — Single replica for DEV
+# Default replicas=3 (PROD HA) — override to 1 for DEV
+# Zone awareness disabled — DEV single node
+# persistentVolume — local disk for WAL and temporary data
+# resources — CPU and Memory for ingester pod
+# =============================================================================
+ingester:
+  replicas: 1                                    # DEV — default is 3 for PROD HA
+  zoneAwareReplication:
+    enabled: false                               # DEV single node — disable zones
+  persistentVolume:
+    enabled: true
+    storageClass: managed-premium                # Azure Premium SSD
+    size: 50Gi                                   # 50 GB local disk for WAL
+    accessModes:
+      - ReadWriteOnce                            # Single node access
+    annotations: {}
+    enableRetentionPolicy: true                  # Activate PVC retention policy
+    whenDeleted: Retain                          # Keep PVC when StatefulSet deleted
+    whenScaled: Retain                           # Keep PVC when scaled down
+  resources:
+    requests:
+      cpu: 500m                                  # 0.5 cores minimum to start
+      memory: 1Gi                                # 1 GB minimum to start
+    limits:
+      cpu: 2                                     # Maximum 2 cores
+      memory: 4Gi                                # Maximum 4 GB
+
+# =============================================================================
+# Store Gateway — Single replica for DEV
+# Zone awareness disabled — DEV single node
+# =============================================================================
+store_gateway:
+  replicas: 1                                    # DEV — single replica
+  zoneAwareReplication:
+    enabled: false                               # DEV single node — disable zones
+
+# =============================================================================
+# Querier — Single replica for DEV
+# Default replicas=2 (PROD HA) — override to 1 for DEV
+# =============================================================================
+querier:
+  replicas: 1                                    # DEV — default is 2 for PROD HA
+
+# =============================================================================
+# Distributor — Single replica for DEV
+# =============================================================================
+distributor:
+  replicas: 1                                    # Same as default
+
+# =============================================================================
+# Disabled components — Not needed for Phase 1
+# =============================================================================
+kafka:
+  enabled: false                                 # Using Azure Blob Storage — no Kafka
+
+minio:
+  enabled: false                                 # Using Azure Blob Storage — no Minio
+
+ruler:
+  enabled: false                                 # Not needed for Phase 1
+
+alertmanager:
+  enabled: false                                 # Not needed for Phase 1
