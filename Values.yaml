@@ -1,0 +1,86 @@
+# values.yaml — Mimir DEV
+# Chart: grafana/mimir-distributed v6.1.0
+
+mimir:
+  structuredConfig:
+    common:
+      storage:
+        backend: azure
+        azure:
+          account_name: stovglobservabilitydev
+          endpoint_suffix: "blob.core.windows.net"
+    blocks_storage:
+      backend: azure
+      azure:
+        container_name: mimir-blocks-dev
+    ingester:
+      ring:
+        replication_factor: 1
+      push_grpc_method_enabled: true
+    ingest_storage:
+      enabled: false
+    usage_stats:
+      enabled: false
+      installation_mode: helm
+    limits:
+      ingestion_rate: 10000
+      max_global_series_per_user: 1500000
+      compactor_blocks_retention_period: 9360h
+    compactor:
+      data_dir: /data/compactor
+
+serviceAccount:
+  create: true
+  annotations:
+    azure.workload.identity/client-id: f1514a75-c187-4be1-b5fa-8c3460b19616
+  labels:
+    azure.workload.identity/use: "true"
+
+global:
+  podLabels:
+    azure.workload.identity/use: "true"
+
+ingester:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+  persistentVolume:
+    enabled: true
+    storageClass: managed-premium
+    size: 50Gi
+    accessModes:
+      - ReadWriteOnce
+    annotations: {}
+    enableRetentionPolicy: true
+    whenDeleted: Retain
+    whenScaled: Retain
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+store_gateway:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+
+querier:
+  replicas: 1
+
+distributor:
+  replicas: 1
+
+kafka:
+  enabled: false
+
+minio:
+  enabled: false
+
+ruler:
+  enabled: false
+
+alertmanager:
+  enabled: false
